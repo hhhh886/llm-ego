@@ -1,0 +1,41 @@
+<launch>
+  <!-- LLM 导航节点启动配置 -->
+  
+  <!-- Ollama 配置 -->
+  <arg name="ollama_url" default="http://127.0.0.1:11434" />
+  <arg name="model" default="llama3.2:1b-instruct-q4_0" />
+  
+  <!-- 导航配置 -->
+  <arg name="min_confidence" default="0.5" />
+  <arg name="enable_context" default="true" />
+  <arg name="context_max_turns" default="5" />
+  
+  <!-- 地图边界 (与 simple_run.launch 保持一致) -->
+  <arg name="map_x_min" default="-20.0" />
+  <arg name="map_x_max" default="20.0" />
+  <arg name="map_y_min" default="-20.0" />
+  <arg name="map_y_max" default="20.0" />
+  <arg name="map_z_min" default="0.1" />
+  <arg name="map_z_max" default="3.0" />
+  
+  <!-- 交互模式 (true=终端交互, false=仅话题监听) -->
+  <arg name="interactive" default="false" />
+
+  <node pkg="ego_planner" type="llm_nav_node.py" name="llm_nav_node" output="screen">
+    <param name="ollama_url" value="$(arg ollama_url)" />
+    <param name="model" value="$(arg model)" />
+    <param name="min_confidence" value="$(arg min_confidence)" />
+    <param name="enable_context" value="$(arg enable_context)" />
+    <param name="context_max_turns" value="$(arg context_max_turns)" />
+    <param name="map_x_min" value="$(arg map_x_min)" />
+    <param name="map_x_max" value="$(arg map_x_max)" />
+    <param name="map_y_min" value="$(arg map_y_min)" />
+    <param name="map_y_max" value="$(arg map_y_max)" />
+    <param name="map_z_min" value="$(arg map_z_min)" />
+    <param name="map_z_max" value="$(arg map_z_max)" />
+    
+    <!-- 地标配置文件路径 -->
+    <param name="landmarks_path" value="$(find ego_planner)/config/llm_landmarks.json" />
+  </node>
+
+</launch>

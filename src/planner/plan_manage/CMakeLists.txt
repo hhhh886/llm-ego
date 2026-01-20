@@ -69,6 +69,7 @@ add_dependencies(traj_server ${${PROJECT_NAME}_EXPORTED_TARGETS})
 
 catkin_install_python(PROGRAMS
   scripts/llm_goal_cli.py
+  scripts/llm_nav_node.py
   scripts/semantic.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
