@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <iostream>
 #include <nav_msgs/Path.h>
+#include <geometry_msgs/PoseStamped.h>
 #include <sensor_msgs/Imu.h>
 #include <ros/ros.h>
 #include <std_msgs/Empty.h>
@@ -75,7 +76,7 @@ namespace ego_planner
     /* ROS utils */
     ros::NodeHandle node_;
     ros::Timer exec_timer_, safety_timer_;
-    ros::Subscriber waypoint_sub_, odom_sub_;
+    ros::Subscriber waypoint_sub_, odom_sub_, pose_goal_sub_;
     ros::Publisher replan_pub_, new_pub_, bspline_pub_, data_disp_pub_;
 
     /* helper functions */
@@ -95,7 +96,11 @@ namespace ego_planner
     void execFSMCallback(const ros::TimerEvent &e);
     void checkCollisionCallback(const ros::TimerEvent &e);
     void waypointCallback(const nav_msgs::PathConstPtr &msg);
+    void poseGoalCallback(const geometry_msgs::PoseStampedConstPtr &msg);
     void odometryCallback(const nav_msgs::OdometryConstPtr &msg);
+    
+    /* Helper for processing goal */
+    void processGoal(double x, double y, double z);
 
     bool checkCollision();
 

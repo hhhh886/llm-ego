@@ -42,7 +42,11 @@ namespace ego_planner
     data_disp_pub_ = nh.advertise<ego_planner::DataDisp>("/planning/data_display", 100);
 
     if (target_type_ == TARGET_TYPE::MANUAL_TARGET)
+    {
       waypoint_sub_ = nh.subscribe("/waypoint_generator/waypoints", 1, &EGOReplanFSM::waypointCallback, this);
+      // 添加对 PoseStamped 类型的支持，用于 LLM 导航等场景
+      pose_goal_sub_ = nh.subscribe("/move_base_simple/goal", 1, &EGOReplanFSM::poseGoalCallback, this);
+    }
     else if (target_type_ == TARGET_TYPE::PRESET_TARGET)
     {
       ros::Duration(1.0).sleep();
@@ -106,24 +110,22 @@ namespace ego_planner
     }
   }
 
-  void EGOReplanFSM::waypointCallback(const nav_msgs::PathConstPtr &msg)
+  void EGOReplanFSM::processGoal(double x, double y, double z)
   {
-    if (msg->poses[0].pose.position.z < -0.1)
-      return;
-
-    cout << "Triggered!" << endl;
+    cout << "Triggered! Goal: (" << x << ", " << y << ", " << z << ")" << endl;
     trigger_ = true;
     init_pt_ = odom_pos_;
 
-    bool success = false;
-    end_pt_ << msg->poses[0].pose.position.x, msg->poses[0].pose.position.y, 1.0;
-    success = planner_manager_->planGlobalTraj(odom_pos_, odom_vel_, Eigen::Vector3d::Zero(), end_pt_, Eigen::Vector3d::Zero(), Eigen::Vector3d::Zero());
+    // 使用传入的 z 坐标，如果为负值或过小则使用默认值 1.0
+    double target_z = (z > 0.1) ? z : 1.0;
+    end_pt_ << x, y, target_z;
+    
+    bool success = planner_manager_->planGlobalTraj(odom_pos_, odom_vel_, Eigen::Vector3d::Zero(), end_pt_, Eigen::Vector3d::Zero(), Eigen::Vector3d::Zero());
 
     visualization_->displayGoalPoint(end_pt_, Eigen::Vector4d(0, 0.5, 0.5, 1), 0.3, 0);
 
     if (success)
     {
-
       /*** display ***/
       constexpr double step_size_t = 0.1;
       int i_end = floor(planner_manager_->global_data_.global_duration_ / step_size_t);
@@ -143,13 +145,37 @@ namespace ego_planner
       else if (exec_state_ == EXEC_TRAJ)
         changeFSMExecState(REPLAN_TRAJ, "TRIG");
 
-      // visualization_->displayGoalPoint(end_pt_, Eigen::Vector4d(1, 0, 0, 1), 0.3, 0);
       visualization_->displayGlobalPathList(gloabl_traj, 0.1, 0);
+      ROS_INFO("Global trajectory generated successfully!");
     }
     else
     {
       ROS_ERROR("Unable to generate global trajectory!");
     }
+  }
+
+  void EGOReplanFSM::waypointCallback(const nav_msgs::PathConstPtr &msg)
+  {
+    if (msg->poses.empty())
+      return;
+
+    if (msg->poses[0].pose.position.z < -0.1)
+      return;
+
+    processGoal(msg->poses[0].pose.position.x, 
+                msg->poses[0].pose.position.y, 
+                msg->poses[0].pose.position.z);
+  }
+
+  void EGOReplanFSM::poseGoalCallback(const geometry_msgs::PoseStampedConstPtr &msg)
+  {
+    if (msg->pose.position.z < -0.1)
+      return;
+
+    ROS_INFO("Received PoseStamped goal from LLM/RViz");
+    processGoal(msg->pose.position.x, 
+                msg->pose.position.y, 
+                msg->pose.position.z);
   }
 
   void EGOReplanFSM::odometryCallback(const nav_msgs::OdometryConstPtr &msg)
@@ -162,7 +188,7 @@ namespace ego_planner
     odom_vel_(1) = msg->twist.twist.linear.y;
     odom_vel_(2) = msg->twist.twist.linear.z;
 
-    //odom_acc_ = estimateAcc( msg );
+    // odom_acc_ = estimateAcc( msg );
 
     odom_orient_.w() = msg->pose.pose.orientation.w;
     odom_orient_.x() = msg->pose.pose.orientation.x;
@@ -349,7 +375,7 @@ namespace ego_planner
     ros::Time time_now = ros::Time::now();
     double t_cur = (time_now - info->start_time_).toSec();
 
-    //cout << "info->velocity_traj_=" << info->velocity_traj_.get_control_points() << endl;
+    // cout << "info->velocity_traj_=" << info->velocity_traj_.get_control_points() << endl;
 
     start_pt_ = info->position_traj_.evaluateDeBoorT(t_cur);
     start_vel_ = info->velocity_traj_.evaluateDeBoorT(t_cur);
@@ -360,7 +386,7 @@ namespace ego_planner
     if (!success)
     {
       success = callReboundReplan(true, false);
-      //changeFSMExecState(EXEC_TRAJ, "FSM");
+      // changeFSMExecState(EXEC_TRAJ, "FSM");
       if (!success)
       {
         success = callReboundReplan(true, true);
@@ -407,7 +433,7 @@ namespace ego_planner
           }
           else
           {
-            //ROS_WARN("current traj in collision, replan.");
+            // ROS_WARN("current traj in collision, replan.");
             changeFSMExecState(REPLAN_TRAJ, "SAFETY");
           }
           return;

@@ -1,0 +1,51 @@
+{
+  "充电桩": {
+    "x": 2.0,
+    "y": 1.5,
+    "z": 1.0,
+    "yaw": 0.0,
+    "aliases": ["充电站", "充电点", "charger", "charging station", "charging"]
+  },
+  "会议室": {
+    "x": -3.0,
+    "y": 4.0,
+    "z": 1.0,
+    "yaw": 0.0,
+    "aliases": ["会议厅", "meeting room", "conference room", "conference"]
+  },
+  "起飞点": {
+    "x": 0.0,
+    "y": 0.0,
+    "z": 1.0,
+    "yaw": 0.0,
+    "aliases": ["起点", "原点", "home", "origin", "takeoff", "start"]
+  },
+  "休息区": {
+    "x": 5.0,
+    "y": -3.0,
+    "z": 1.0,
+    "yaw": 0.0,
+    "aliases": ["休息室", "休息点", "lounge", "rest area"]
+  },
+  "入口": {
+    "x": -8.0,
+    "y": 0.0,
+    "z": 1.0,
+    "yaw": 0.0,
+    "aliases": ["大门", "门口", "entrance", "gate", "entry"]
+  },
+  "窗户": {
+    "x": 0.0,
+    "y": 10.0,
+    "z": 1.5,
+    "yaw": 0.0,
+    "aliases": ["窗边", "window"]
+  },
+  "工作台": {
+    "x": 8.0,
+    "y": 5.0,
+    "z": 1.0,
+    "yaw": 0.0,
+    "aliases": ["工作区", "桌子", "desk", "workstation", "workspace"]
+  }
+}
