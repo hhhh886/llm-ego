@@ -130,32 +130,32 @@ class LowLatencyLLMNavigator:
 
     def _build_prompt(self, user_input: str) -> str:
         """构建带上下文的 prompt"""
-        # 系统提示
-        system = """你是无人机导航助手。分析指令返回JSON。
-必须包含: "action", "landmark", "confidence"
-action: "navigate"(导航), "stop"(停止), "pause"(暂停), "resume"(继续), "unknown"
-landmark: 目标地点名称(如果action是navigate)
-confidence: 0-1的置信度
+        # 获取可用地标列表
+        landmark_list = list(self.landmarks.keys())
+        landmarks_str = "、".join(landmark_list)
+        
+        # 系统提示 - 更简洁明确
+        system = f"""你是无人机导航助手。从用户指令中提取导航意图。
 
-注意：
-- "那里"、"那边"、"刚才那个地方"等指代词，请根据上下文推断具体地点
-- "回去"、"返回"通常指起飞点/原点
-- 只返回JSON，不要其他文字"""
+可用地标: [{landmarks_str}]
+
+返回JSON格式:
+{{"action": "navigate/stop/pause/unknown", "landmark": "地标名", "confidence": 0.0-1.0}}
+
+规则:
+- landmark必须是上述可用地标之一
+- 充电相关→充电桩, 会议相关→会议室, 休息相关→休息区
+- "回去/返回/home"→起飞点
+- 只输出JSON"""
 
         # 构建上下文
         context_str = ""
         if self.enable_context and self.context_history:
-            context_str = "\n历史对话:\n"
-            for turn in self.context_history:
-                context_str += f"用户: {turn['user']}\n"
-                context_str += f"结果: {turn['result']}\n"
-            if self.last_landmark:
-                context_str += f"(上一个目标地点是: {self.last_landmark})\n"
+            context_str = f"\n上一个目标: {self.last_landmark}" if self.last_landmark else ""
 
-        prompt = f"""{system}
-{context_str}
-当前指令: {user_input}
+        prompt = f"""{system}{context_str}
 
+指令: {user_input}
 JSON:"""
         return prompt
 
@@ -194,8 +194,8 @@ JSON:"""
 
             latency = (time.time() - start) * 1000
 
-            # 验证并规范化
-            result = self._validate_result(result)
+            # 验证并规范化（传入原始输入用于关键词校验）
+            result = self._validate_result(result, user_input)
             return result, latency
 
         except Exception as e:
@@ -203,8 +203,8 @@ JSON:"""
             rospy.logerr(f"LLM parse failed: {e}")
             return {"action": "unknown", "landmark": None, "confidence": 0.0}, latency
 
-    def _validate_result(self, result: Dict) -> Dict:
-        """验证 LLM 输出"""
+    def _validate_result(self, result: Dict, original_input: str = "") -> Dict:
+        """验证 LLM 输出，并进行关键词校验"""
         valid_actions = {"navigate", "stop", "pause", "resume", "unknown"}
 
         action = result.get("action", "unknown")
@@ -226,7 +226,42 @@ JSON:"""
         except:
             confidence = 0.0
 
+        # === 关键词校验：如果用户输入明确包含某地标，但 LLM 返回了其他地标，则纠正 ===
+        if original_input and action == "navigate":
+            corrected = self._keyword_correction(original_input, landmark)
+            if corrected and corrected != landmark:
+                rospy.logwarn(f"Keyword correction: '{landmark}' -> '{corrected}'")
+                landmark = corrected
+                confidence = max(confidence, 0.8)  # 关键词匹配置信度较高
+
         return {"action": action, "landmark": landmark, "confidence": confidence}
+
+    def _keyword_correction(self, user_input: str, llm_landmark: str) -> Optional[str]:
+        """
+        基于关键词的地标纠正
+        如果用户输入中明确包含某个地标的关键词，优先使用该地标
+        """
+        input_lower = user_input.lower()
+        
+        # 关键词映射表（优先级从高到低）
+        keyword_map = [
+            # (关键词列表, 目标地标)
+            (["充电", "charge", "charging"], "充电桩"),
+            (["会议", "meeting", "conference"], "会议室"),
+            (["休息", "rest", "lounge"], "休息区"),
+            (["入口", "门", "entrance", "gate"], "入口"),
+            (["窗", "window"], "窗户"),
+            (["工作", "桌", "desk", "work"], "工作台"),
+            (["起飞", "原点", "home", "origin", "start", "返回", "回去"], "起飞点"),
+        ]
+        
+        for keywords, target_landmark in keyword_map:
+            for kw in keywords:
+                if kw in input_lower:
+                    # 用户输入包含此关键词，返回对应地标
+                    return target_landmark
+        
+        return None  # 没有匹配到，保持 LLM 结果
 
     def _resolve_landmark(self, name: str) -> Optional[Tuple[str, dict]]:
         """
@@ -430,18 +465,29 @@ JSON:"""
 
 def main():
     import argparse
+    import sys
 
     parser = argparse.ArgumentParser(description="LLM Navigation Node")
     parser.add_argument(
         "--interactive", "-i", action="store_true", help="Run in interactive mode"
+    )
+    parser.add_argument(
+        "--topic-only", "-t", action="store_true", help="Only listen to topic (no interactive)"
     )
     # ROS 参数会过滤掉，这里只处理自定义参数
     args, _ = parser.parse_known_args()
 
     node = LowLatencyLLMNavigator()
 
-    if args.interactive:
-        # 启动话题监听线程
+    # 判断是否应该进入交互模式:
+    # 1. 明确指定 -i/--interactive
+    # 2. 直接运行脚本（stdin 是终端）且没有指定 --topic-only
+    use_interactive = args.interactive or (
+        sys.stdin.isatty() and not args.topic_only
+    )
+
+    if use_interactive:
+        # 启动话题监听线程（同时支持话题和终端输入）
         spin_thread = threading.Thread(target=lambda: rospy.spin(), daemon=True)
         spin_thread.start()
         # 主线程运行交互模式
